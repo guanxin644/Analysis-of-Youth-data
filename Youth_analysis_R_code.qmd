@@ -1,0 +1,329 @@
+---
+title: "Youth_analysis_R_code"
+format: html
+editor: visual
+---
+
+# Packages loading
+
+```{r}
+#some may not be used in current analysis
+library(semTools)
+library(haven)
+library(tidyverse)
+library(dplyr)
+library(bruceR)
+library(summarytools)
+library(gtsummary)
+library(labelled)
+library(lm.beta)
+library(corrplot)
+library(lavaan)
+library(Gmisc)
+library(psych)
+library(parameters)
+library(GPArotation)
+library(finalfit)
+library(demoGraphic)
+library(vtable)
+library(gtsummary)
+library(janitor)
+library(naniar)
+
+library(rstatix)
+
+library(ltm)
+
+library(devtools)
+library(lavaan)
+library(semPlot)
+library(OpenMx)
+library(knitr)
+library(kableExtra)
+library(GGally)
+library(simsem)
+library(remotes)
+library(tidySEM)
+library(ggplot2)
+library(labelled)
+
+library(ggplot2)
+library(cowplot)
+library(jtools)
+library(marginaleffects)
+library(tidyquant)
+library(ggdist)
+library(ggsci)
+```
+
+# Data importation
+
+```{r}
+imported <- read_dta('youth_data.dta')
+```
+
+# Information of socio-demographic feature
+
+## Create table of socio-demographic feature
+
+```{r}
+DEMO_dd <- imported %>% 
+  mutate(age_cat = case_when(Q2_1 <= 19 ~ 1,
+                             Q2_1 >= 20 & Q2_1 <= 24 ~ 2,
+                             Q2_1 >= 25 & Q2_1 <= 29 ~ 3,
+                             Q2_1 >= 30 & Q2_1 <= 34 ~ 4,
+                             Q2_1 >= 35 & Q2_1 <= 40 ~ 5),
+         new_Q2_2 = case_when(Q2_2 == 1 ~ 0, Q2_2 == 2 ~ 1),
+         new_Q2_3 = case_when(Q2_3 == 1 | Q2_3 == 3 | Q2_3 == 4 ~ 1,
+                              Q2_3 == 2 | Q2_3 == 5 | Q2_3 == 6 ~ 2),
+         new_Q4 = case_when(Q4 <=5 ~ 0, Q4 >= 6 & Q4 <= 12 ~ 1),
+         income_cat = case_when(Q2_7_inco == 1 | Q2_7_inco == 2 ~ 1,
+                                Q2_7_inco == 3 | Q2_7_inco == 4 ~ 2,
+                                Q2_7_inco == 11 | Q2_7_inco == 12 ~ 9,
+                                Q2_7_inco == 5 ~ 3, Q2_7_inco == 6 ~ 4,
+                                Q2_7_inco == 7 ~ 5, Q2_7_inco == 8 ~ 6,
+                                Q2_7_inco == 9 ~ 7, Q2_7_inco == 10 ~ 8)) %>% 
+  mutate(across(c(new_Q2_2,age_cat,new_Q2_3, income_cat, Q2_10, new_Q4, Q1_1), factor)) %>%
+  dplyr::select(Q2_1, new_Q2_2,age_cat,new_Q2_3, income_cat, Q2_10, new_Q4, Q1_1)
+ 
+demo_table <- sumtable(DEMO_dd)
+
+
+```
+
+## Visualize socio-demographic feature
+
+```{r}
+
+p0_job <-ggplot(DEMO_dd[!is.na(DEMO_dd$Q1_1),],mapping = aes(x=as_factor(Q1_1),fill = age_cat)) + 
+  geom_bar(position = 'dodge',na.rm = T) +
+  scale_fill_grey(name="Age category",
+                  breaks=c("1", "2", "3","4","5"),
+                  labels=c("18-19", "20-24", "25-29","30-34","35-40")) + 
+  theme_classic(base_size = 18) + theme(legend.position = "top") + 
+  labs(title = "Distribution plot of age per type of employment (a)",x = "Employment", y = "No. of participants") + 
+  scale_x_discrete(labels = c('Has job','No job\n(full-time student)','No job\n(non full-time student)'))
+
+
+p1_income <- ggplot(DEMO_dd[!is.na(DEMO_dd$income_cat),],
+             mapping = aes(x=as_factor(income_cat),fill = age_cat)) + 
+  geom_bar(position = 'dodge',na.rm = T) +
+  geom_vline(aes(xintercept = 2), linetype="dashed", color="blue", size=1) +
+  theme_classic(base_size = 18) + theme(legend.position = "none") + 
+  scale_fill_grey()+
+  labs(title = "Distribution plot of age per personal income category (b)",x = "Personal income",y = "No. of participants") + 
+  scale_x_discrete(labels = c('Below HK$10,000',
+                              'HK$10,000 - 19,999',
+                              'HK$20,000 - 29,999',
+                              'HK$30,000 - 39,999',
+                              'HK$40,000 - 49,999',
+                              'HK$50,000 - 59,999',
+                              'HK$60,000 - 69,999',
+                              'HK$70,000 - 79,999',
+                              'HK$80,000 or above'))
+
+# median(as.numeric(DEMO_dd$income_cat),na.rm = TRUE)
+#> [1] 2
+
+
+p2_edu <-ggplot(DEMO_dd[!is.na(DEMO_dd$Q2_10),],
+             mapping = aes(x=as_factor(Q2_10),fill = age_cat)) + 
+  geom_bar(position = 'dodge',na.rm = T) +
+  geom_vline(aes(xintercept = 5), linetype="dashed", color="blue", size=1) +
+  theme_classic(base_size = 18) + theme(legend.position = "none") + 
+  scale_fill_grey() + 
+  labs(title = "Distribution plot of age per level of educational attainment (c)",x = "Educational attainment", y = "No. of participants") + 
+  scale_x_discrete(labels = c('Grade 6 or below',
+                              'Grade 7-9',
+                              'Grade 10-11',
+                              'Grade 12-13',
+                              'Higher Diploma or Associate Degree',
+                              'Bachelor’s degree',
+                              'Master’s degree or above'))
+# median(as.numeric(DEMO_dd$Q2_10),na.rm = TRUE)
+#> [1] 5
+
+
+p3_house<-ggplot(DEMO_dd[!is.na(DEMO_dd$new_Q4),],
+             mapping = aes(x=as_factor(new_Q4),fill = age_cat)) + 
+  geom_bar(position = 'dodge',na.rm = T) +
+  theme_classic(base_size = 18) + theme(legend.position = "none") + 
+  scale_fill_grey() + 
+  labs(title = "Distribution plot of age per type of homeownership (d)",x = 'Homeownership',y = "No. of participants") + 
+  scale_x_discrete(labels = c('Owned Housing', 'Rented Housing'))
+
+demo_plot <- plot_grid(p0_job, p1_income, p2_edu, p3_house, nrow = 4)
+```
+
+# Examination of four hypothesis
+
+```{r}
+hyp_dd <- imported %>% 
+  mutate(new_Q2_2 = case_when(Q2_2 == 1 ~ 0, Q2_2 == 2 ~ 1),
+         new_Q2_3 = case_when(Q2_3 == 1 | Q2_3 == 3 | Q2_3 == 4 ~ 1,
+                              Q2_3 == 2 | Q2_3 == 5 | Q2_3 == 6 ~ 2),
+         new_Q4 = case_when(Q4 <=5 ~ 0, Q4 >= 6 & Q4 <= 12 ~ 1)
+  ) %>% 
+  mutate(Q1_1 = case_when(Q1_1 ==1 ~ 1, 
+                          Q1_1 ==2 | Q1_1==3 ~2)) %>% 
+  mutate(across(c(new_Q2_2,new_Q2_3, Q1_1,new_Q4), factor))
+ 
+```
+
+## Construct three predictors and one outcome variable
+
+```{r}
+#> HC: 63, 56, 58, 59, 61, 60
+#> SEC: 23, 21R, 62R, 26R, 6R, 31R, 25R, 27, 46, 22R, 35,  24, 36, 37R, 44, 29R
+#> EI: 51, 52, 53, 54
+#> CHC:  2, 47, 43, 55, 81, 79, 34, 42
+
+#Housing challenge -  6 items
+hc_scale <- c("D_Q63", "D_Q56", "D_Q58","D_Q59","D_Q61","D_Q60")
+#Socio-economic challenges - 16 items
+sec_scale <- c("B_Q23", "n_r_21", "n_r_62", "n_r_26", "n_r_6", "n_r_31", "n_r_25", "B_Q27", "C_Q46","n_r_22", "C_Q35", "B_Q24","C_Q36","n_r_37", "C_Q44", "n_r_29") 
+#Hardships associated with Entrepreneurship and Innovation - 4 items
+ei_scale <- c("D_Q51", "D_Q52", "D_Q53","D_Q54") 
+#MC-HK convergence - 8 items
+chc_scale <- c("B_Q2","C_Q47", "C_Q43","D_Q55", "G_Q81", "F_Q79", "C_Q34", "C_Q42") 
+
+
+ei_scaled <- hyp_dd %>% dplyr::select(!!!ei_scale)
+hc_scaled <- hyp_dd %>% dplyr::select(!!!hc_scale)
+sec_scaled <- hyp_dd %>% dplyr::select(!!!sec_scale)
+chc_scaled <- hyp_dd %>% dplyr::select(!!!chc_scale)
+
+ltm::cronbach.alpha(hc_scaled, na.rm = TRUE)
+ltm::cronbach.alpha(sec_scaled, na.rm = TRUE)
+ltm::cronbach.alpha(ei_scaled, na.rm = TRUE)
+ltm::cronbach.alpha(chc_scaled, na.rm = TRUE)
+
+hyp_dd <- hyp_dd %>% 
+  mutate(hc_avg = rowMeans(select_at(., hc_scale),na.rm = TRUE)) %>% 
+  mutate(sec_avg = rowMeans(select_at(., sec_scale),na.rm = TRUE)) %>% 
+  mutate(ei_avg = rowMeans(select_at(., ei_scale),na.rm = TRUE)) %>% 
+  mutate(chc_avg = rowMeans(select_at(., chc_scale),na.rm = TRUE))
+
+mean(hyp_dd$hc_avg)
+mean(hyp_dd$sec_avg)
+mean(hyp_dd$ei_avg)
+mean(hyp_dd$chc_avg)
+
+```
+
+## Visualize distribution of predictors and outcome variables conditioned by age
+
+```{r}
+
+hc_age <- ggplot(hyp_dd, mapping = aes(x = as_factor(age_cat),y = hc_avg, fill = as_factor(age_cat))) + 
+  scale_fill_grey() + 
+  # add half-violin from {ggdist} package
+  stat_halfeye(adjust = .5,# custom bandwidth
+               justification = 0,# move geom to the right
+               .width = 0.5,# remove slab interval
+               point_colour = NA) +
+  geom_boxplot(color = "blue",width = .5, outlier.colour="blue",outlier.shape=7,outlier.size=4,notch=TRUE,notchwidth=0.5) + 
+  labs(title="Distribution plot of housing challenges (HC) per age category (a)", y = "HC",x = "",fill="Age category") + 
+  geom_hline(aes(yintercept = 4.05),linetype="dashed", color="blue", size=1) +
+  theme_classic(base_size = 18) + 
+  theme(legend.position = "top", axis.ticks = element_blank(), axis.text.x = element_blank()) 
+#mean(hyp_dd$HC) #> 4.05
+
+ss_age <- ggplot(hyp_dd, mapping = aes(x = as_factor(age_cat),y = sec_avg, fill = as_factor(age_cat))) + 
+  scale_fill_grey() + 
+  stat_halfeye(adjust = .5,justification = 0,.width = 0.5,point_colour = NA) +
+  geom_boxplot(color = "blue",width = .5, outlier.colour="blue",outlier.shape=7,outlier.size=4,notch=TRUE,notchwidth=0.5) + 
+  labs(title="Distribution plot of socio-economic challenges (SEC) per age category (b)",y = "SEC",x = "") + 
+  geom_hline(aes(yintercept = 3.46),linetype="dashed", color="blue", size=1) +
+  theme_classic(base_size = 18) + 
+  theme(legend.position = "none",axis.ticks = element_blank(), axis.text.x = element_blank()) 
+#mean(hyp_dd$ss) #> 3.46
+
+ei_age <- ggplot(hyp_dd, mapping = aes(x = as_factor(age_cat),y = ei_avg, fill = as_factor(age_cat))) + 
+  scale_fill_grey() + 
+  stat_halfeye(adjust = .5,justification = 0,.width = 0.5,point_colour = NA) +
+  geom_boxplot(color = "blue",width = .5, outlier.colour="blue",outlier.shape=7,outlier.size=4,notch=TRUE,notchwidth=0.5) + 
+  labs(title="Distribution plot of hardships associated with entrepreneurship and innovation (EI) per age category (c)",y = "EI",x = "") + 
+  geom_hline(aes(yintercept = 4),linetype="dashed", color="blue", size=1) +
+  theme_classic(base_size = 18)  + 
+  theme(legend.position = "none",axis.ticks = element_blank(), axis.text.x = element_blank())
+#mean(hyp_dd$EI) #> 4
+
+hci_age <- ggplot(hyp_dd, mapping = aes(x = as_factor(age_cat),y = chc_avg, fill = as_factor(age_cat))) + 
+  scale_fill_grey() + 
+  stat_halfeye(adjust = .5,justification = 0,.width = 0.5,point_colour = NA) +
+  geom_boxplot(color = "blue",width = .5, outlier.colour="blue",outlier.shape=7,outlier.size=4, notch=TRUE,notchwidth=0.5) + 
+  labs(title="Distribution plot of Mainland China–Hong Kong convergence (CHC) per age category (d)",x="Age category", y = "CHC") + 
+  geom_hline(aes(yintercept = 2.87),linetype="dashed", color="blue", size=1) +
+  theme_classic(base_size = 18) + 
+  theme(legend.position = "none")
+#mean(hyp_dd$HCI) #> 2.87 
+
+ind_plot <- plot_grid(hc_age, ss_age,ei_age,hci_age,nrow = 4)
+  
+
+```
+
+## Test HYP1
+
+Hypothesis 1 (H1): The perception of the housing challenges is negatively related to MC-HK convergence. That is, the more the young people perceived challenges in their housing conditions, the lower their acceptance of MC-HK convergence.
+
+```{r}
+# HC-CHC: supported
+hyp1 <- lm(chc_avg ~ Q2_1+new_Q2_2+new_Q2_3+Q2_7_inco+Q1_1+new_Q4 + hc_avg, hyp_dd)
+```
+
+## Test HYP2
+
+Hypothesis 2 (H2): Higher education predicts lower acceptance of MC-HK convergence. That is, the higher the young people's level of education, the lower their acceptance of MC-HK convergence.
+
+```{r}
+#education - CHC: supported
+hyp2 <- lm(chc_avg ~ Q2_1+new_Q2_2+new_Q2_3+Q2_7_inco+Q1_1+new_Q4 + Q2_10, hyp_dd)
+```
+
+## Test HYP3
+
+Hypothesis 3 (H3): The perception of the socio-economic challenges is negatively related to MC-HK convergence. That is, the more the young people perceived challenges in their socio-economic conditions, the lower their acceptance of MC-HK convergence.
+
+```{r}
+#SEC - CHC: supported
+hyp3 <- lm(chc_avg ~ Q2_1+new_Q2_2+new_Q2_3+Q2_7_inco+Q1_1+new_Q4 + sec_avg, hyp_dd)
+```
+
+## Test HYP4
+
+Hypothesis 4 (H4): The perception of the hardships associated with entrepreneurship and innovation is positively related to MC-HK convergence. That is, the more the young people perceived hardships associated with entrepreneurship and innovation, the higher their acceptance of MC-HK convergence.
+
+```{r}
+#EI - CHC: not supported
+hyp4 <- lm(chc_avg ~ Q2_1+new_Q2_2+new_Q2_3+Q2_7_inco+Q1_1+new_Q4 + ei_avg, hyp_dd)
+```
+
+## Visualization of effect of four hypothesis
+
+```{r}
+coef_names <- c("Age" = "Q2_1",
+                "Gender" = "new_Q2_21",
+                "Marital status (married = 0)" = "new_Q2_32",
+                "Personal income" = "Q2_7_inco",
+                "Employment (has job = 0)" = "Q1_12",
+                "Homeownership (owned = 0)" = "new_Q41",
+                "Housing challenges (HC)" = "hc_avg",
+                "Educational attainment" = "Q2_10",
+                "Socio-economic challenges (SEC)" = "sec_avg",
+                "Hardships associated with\nentrepreneurship and innovation (EI)" = "ei_avg"
+                )
+reg_plot <- jtools::plot_summs(hyp1,hyp2,hyp3,hyp4,
+                               coefs = coef_names,
+                               inner_ci_level = .9,
+                               model.names = c("Model H1","Model H2","Model H3", "Model H4"),
+                               colors = "Greys", point.size = 10) + 
+  theme_classic(base_size = 24) +theme(legend.position = "top")
+export_summs(hyp1,hyp2,hyp3,hyp4, #scale = TRUE, robust = TRUE,
+             error_format = "[{conf.low}, {conf.high}]",
+             model.names = c("Model of H1","Model of H2","Model of H3","Model of H4"),
+             coefs = coef_names)
+             #to.file = "docx", file.name = "output.docx")
+
+```
